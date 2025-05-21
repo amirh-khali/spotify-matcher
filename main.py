@@ -28,9 +28,9 @@ def connect_to_spotify():
     for the given user.
     Returns (Spotify object, auth_manager)"""
     auth_manager = oauth2.SpotifyOAuth(
-        client_id="1b906312d4eb44189b1762bba74fa4f6",
-        client_secret="adb0a2eaadd64949b3ea2074a2e69b6f",
-        redirect_uri="https://open.spotify.com/",
+        client_id=os.environ.get("CLIENT_ID", default="1b906312d4eb44189b1762bba74fa4f6"),
+        client_secret=os.environ.get("CLIENT_SECRET", default="adb0a2eaadd64949b3ea2074a2e69b6f"),
+        redirect_uri=os.environ.get("REDIRECT_URI", default="https://open.spotify.com/"),
         scope=SCOPE,
         username=username,
     )
@@ -78,7 +78,7 @@ def get_title_and_artist(music_dir):
                 continue
 
             files_read += 1
-            yield (f"track:{audiofile.title} artist:{audiofile.artist}", f"{audiofile.artist} - {audiofile.title}")
+            yield (f'track:"{audiofile.title}" artist:"{audiofile.artist}"', os.path.splitext(os.path.basename(audiofile.filename))[0])
             # NOTE: Query being in double quotes makes it stick to the
             # given word order instead of matching a bunch of possibilities
             # Use it (by writing \" at the beginning and end of the string)
@@ -147,7 +147,7 @@ def add_tracks_to_playlist(track_ids):
 
 if __name__ == "__main__":
     SCOPE = "playlist-modify-public playlist-modify-private user-library-modify"
-    MUSIC_DIR = ""
+    MUSIC_DIR = os.environ.get("MUSIC_DIR", default="")
     # Write the dirpath directly here to avoid having to do it through terminal.
     # Make sure to escape backslashes. Examples:
     # 'C:/Users/John/Music/My Music'
@@ -171,15 +171,33 @@ if __name__ == "__main__":
                 token_info = auth_manager.refresh_access_token(token_info["refresh_token"])
 
             searched_songs += 1
-            print(f"{searched_songs}: {query_song_pair[1]}")
+            print(f"search for: {searched_songs}: {query_song_pair[1]}", end=' ')
 
             try:
+                if '"None"' in query_song_pair[0]:
+                    raise Exception("Tags are incomplete.")
                 result = sp.search(query_song_pair[0], limit=1)["tracks"]["items"][0]["id"]
             except:
-                print("\t*NO MATCH*")
-                failed_matches_file.write(f"{query_song_pair[1]}\n")
-                failed_song_names.append(query_song_pair[1])
+                print("❌")
+                try:
+                    top_results = sp.search(query_song_pair[1], limit=3)["tracks"]["items"]
+                except:
+                    failed_matches_file.write(f"{query_song_pair[1]}\n")
+                    failed_song_names.append(query_song_pair[1])
+                else:
+                    print("\tTOP RESULTS:")
+                    for index, tr in enumerate(top_results):
+                        print(f"\t\t{index + 1}. {[artist['name'] for artist in tr['artists']]} - {tr['name']}")
+                    choise = int(input("\twhich one? enter 0 to skip: ") or 0)
+                    if (choise == 0):
+                        print("\tFINE, THERE IS NO WAY!")
+                        failed_matches_file.write(f"{query_song_pair[1]}\n")
+                        failed_song_names.append(query_song_pair[1])
+                    else:
+                        print("\tEXCELENT CHOICE!")
+                        track_ids.append(top_results[choise - 1]["id"])
             else:
+                print("✅")
                 track_ids.append(result)
 
         success_rate = "{:.2f}".format(len(track_ids) / (searched_songs - 1) * 100)
